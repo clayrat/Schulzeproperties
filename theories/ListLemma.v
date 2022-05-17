@@ -1,464 +1,291 @@
-Require Import Notations.
-Require Import Coq.Lists.List.
-Require Import Coq.Arith.Le.
-Require Import Coq.Numbers.Natural.Peano.NPeano.
-Require Import Coq.Arith.Compare_dec.
-Require Import Lia.
-Require Import Bool.Sumbool.
-Require Import Bool.Bool.
-Require Import Coq.Logic.ConstructiveEpsilon.
-Require Import Coq.ZArith.ZArith.
-Import ListNotations.
-Open Scope Z.
-Require Import
-        Program Morphisms Relations RelationClasses Permutation.
+From Coq Require Import ssreflect ssrbool ssrfun.
+From mathcomp Require Import ssrnat seq eqtype ssrint order bigop path.
 
-
-
+(*
 Notation "'existsT' x .. y , p" :=
   (sigT (fun x => .. (sigT (fun y => p)) ..))
     (at level 200, x binder, right associativity,
      format "'[' 'existsT' '/ ' x .. y , '/ ' p ']'") : type_scope.
+*)
 
+Lemma inj_pairl {A B : Type} x : injective [eta (@pair A B)^~ x].
+Proof. by apply/(can_inj (g:=fst)). Qed.
 
+Lemma inj_pairr {A B : Type} x : injective [eta (@pair A B) x].
+Proof. by apply/(can_inj (g:=snd)). Qed.
 
-Fixpoint all_pairs_row_t {A : Type} (l1 : list A) (l2 : list A) : list (A * A) :=
-  match l1 with
-  | [] => []
-  | c :: cs =>
+Fixpoint all_pairs_row_t {A : Type} (l1 : seq A) (l2 : seq A) : seq (A * A) :=
+  if l1 is c :: cs then
     map (fun x => (c, x)) l2 ++ all_pairs_row_t cs l2
-  end.
+  else [::].
 
-Eval compute in all_pairs_row_t [1;2;3] [4].
+Eval compute in all_pairs_row_t [::1;2;3] [::4].
 
-Lemma row_t_correctness :
-  forall (A : Type) (a1 a2 : A) (l1 l2 : list A),
-    In a1 l1 -> In a2 l2 -> In (a1, a2) (all_pairs_row_t l1 l2).
+Lemma row_t_correctness {A : eqType} (a1 a2 : A) (l1 l2 : seq A) :
+    a1 \in l1 -> a2 \in l2 -> (a1, a2) \in all_pairs_row_t l1 l2.
 Proof.
-  intros A a1 a2.
-  induction l1; simpl; intros; try auto.
-  - destruct H; subst.
-    +  apply in_app_iff.
-       left. apply in_map. auto.
-    +  apply in_app_iff. right. auto.
+move=>+ H2; elim: l1=>//= c cs IH.
+rewrite inE mem_cat; case/orP=>[/eqP ->|/IH ->]; last by rewrite orbT.
+by rewrite (mem_map (inj_pairr _)) H2.
 Qed.
 
-Definition all_pairs_row {A : Type} (l : list A) : list (A * A) :=
+Definition all_pairs_row {A} (l : seq A) : seq (A * A) :=
   all_pairs_row_t l l.
 
-Lemma all_pairs_row_in :
-  forall (A : Type) (a1 a2 : A) (l : list A),
-    In a1 l -> In a2 l -> In (a1, a2) (all_pairs_row l).
+Lemma all_pairs_row_in {A : eqType} (a1 a2 : A) (l : seq A) :
+    a1 \in l -> a2 \in l -> (a1, a2) \in (all_pairs_row l).
+Proof. by apply: row_t_correctness. Qed.
+
+
+Fixpoint all_pairs_col_t {A} (l1 : seq A) (l2 : seq A) : seq (A * A) :=
+  if l1 is c :: cs then
+    map (fun x => (x, c)) l2 ++ all_pairs_col_t cs l2
+  else [::].
+
+Eval compute in all_pairs_col_t [::1;2;3] [::4].
+
+
+Lemma col_t_correctness {A : eqType} (a1 a2 : A) (l1 l2 : seq A) :
+    a1 \in l1 -> a2 \in l2 -> (a2, a1) \in all_pairs_col_t l1 l2.
 Proof.
-  intros A a1 a2 l H1 H2.
-  unfold all_pairs_row.
-  pose proof (row_t_correctness A a1 a2 l l H1 H2); auto.
+move=>+ H2; elim: l1=>//=c cs IH.
+rewrite inE mem_cat; case/orP=>[/eqP ->|/IH ->]; last by rewrite orbT.
+by rewrite (mem_map (inj_pairl _)) H2.
 Qed.
 
-
-Fixpoint all_pairs_col_t {A : Type} (l1 : list A) (l2 : list A) : list (A * A) :=
-  match l1 with
-  | [] => []
-  | c :: cs =>
-      map (fun x => (x, c)) l2 ++ all_pairs_col_t cs l2
-  end.
-
-Eval compute in all_pairs_col_t [1;2;3] [4].
-
-
-Lemma col_t_correctness :
-  forall (A : Type) (a1 a2 : A) (l1 l2 : list A),
-    In a1 l1 -> In a2 l2 -> In (a2, a1) (all_pairs_col_t l1 l2).
-Proof.
-  intros A a1 a2.
-  induction l1; simpl; intros; try auto.
-  - destruct H; subst.
-    +  apply in_app_iff.
-       left. pose proof (in_map (fun x : A => (x, a1)) l2 a2 H0).
-       simpl in H. auto.
-    +  apply in_app_iff. right. pose proof (IHl1 l2 H H0).
-       auto.
-Qed.
-
-Definition all_pairs_col {A : Type} (l : list A) : list (A * A) :=
+Definition all_pairs_col {A} (l : seq A) : seq (A * A) :=
   all_pairs_col_t l l.
 
-Lemma all_pairs_col_in :
-  forall (A : Type) (a1 a2 : A) (l : list A),
-    In a1 l -> In a2 l -> In (a2, a1) (all_pairs_col l).
-Proof.
-  intros A a1 a2 l H1 H2.
-  pose proof (col_t_correctness A a1 a2 l l H1 H2).
-  auto.
-Qed.
-
-
+Lemma all_pairs_col_in {A : eqType} (a1 a2 : A) (l : seq A) :
+    a1 \in l -> a2 \in l -> (a2, a1) \in all_pairs_col l.
+Proof. by apply: col_t_correctness. Qed.
 
 (* all_pairs computes all the pairs of candidates in l *)
-Fixpoint all_pairs {A: Type} (l: list A): list (A * A) :=
-  match l with
-  | [] => []
-  | c::cs => (c, c) :: (all_pairs cs)
-                   ++  (map (fun x => (c, x)) cs)
-                   ++ (map (fun x => (x, c)) cs)
-  end.
+Fixpoint all_pairs {A} (l: seq A): seq (A * A) :=
+  if l is c::cs then
+    (c, c) :: (all_pairs cs) ++ map (fun x => (c, x)) cs
+                             ++ map (fun x => (x, c)) cs
+  else [::].
 
-
-Lemma all_pairsin: forall {A : Type} (a1 a2 : A) (l : list A),
-    In a1 l -> In a2 l -> In (a1, a2) (all_pairs l).
+Lemma all_pairsin {A : eqType} (a1 a2 : A) (l : seq A) :
+    a1 \in l -> a2 \in l -> (a1, a2) \in all_pairs l.
 Proof.
-  intros A a1 a2 l H1 H2. induction l.
-  inversion H1. simpl.
-  destruct H1 as [H3 | H3].
-  {
-    destruct H2 as [H4 | H4].
-    left. congruence.
-    right. apply in_app_iff. right.
-    apply in_app_iff. left.
-    rewrite H3. apply in_map. assumption.
-  }
-  {
-    destruct H2 as [H4 | H4].
-    right. apply in_app_iff.
-    right. apply in_app_iff.
-    right. rewrite H4. apply in_map_iff.
-    exists a1. split. auto. auto.
-    right. apply in_app_iff. left.
-    apply IHl. assumption. assumption.
-  }
+elim: l=>//=c cs IH; rewrite !inE !mem_cat.
+case/orP=>[/eqP->|H1]; case/orP=>[/eqP->|H2].
+- by rewrite eq_refl.
+- by rewrite (mem_map (inj_pairr _)) H2 !orbT.
+- by rewrite (mem_map (inj_pairl _)) H1 !orbT.
+by rewrite (IH H1 H2) orbT.
 Qed.
 
-Theorem length_all_pairs :
-  forall (A : Type) (l : list A), length (all_pairs l)  = (length l * length l)%nat.
+Theorem length_all_pairs {A} (l : seq A) : size (all_pairs l) = size l * size l.
 Proof.
-  intros A l. induction l. simpl. auto.
-  simpl. apply f_equal. repeat (rewrite app_length).
-  repeat (rewrite map_length). rewrite IHl.
-  remember (length l) as n. rewrite Nat.mul_succ_r.
-  lia.
+elim: l=>//=x cs IH; rewrite !size_cat !size_map {}IH.
+by rewrite mulSnr mulnSr addnA addnS.
 Qed.
 
-Theorem length_all_pairs_t_row :
-  forall (A : Type) (l1 l2 : list A) ,
-    length (all_pairs_row_t l1 l2) = (length l1 * length l2)%nat.
+Theorem length_all_pairs_t_row {A} (l1 l2 : seq A) :
+    size (all_pairs_row_t l1 l2) = size l1 * size l2.
 Proof.
-  intros A.
-  induction l1; simpl; intros; try auto.
-  rewrite app_length. rewrite map_length.
-  apply f_equal. apply IHl1.
+elim: l1=>//=c cs IH; rewrite size_cat size_map {}IH.
+by rewrite mulSn.
 Qed.
 
-Theorem length_all_pairs_row :
-  forall (A : Type) (l : list A),
-    length (all_pairs_row l) = (length l * length l)%nat.
+Theorem length_all_pairs_row {A} (l : seq A) :
+    size (all_pairs_row l) = size l * size l.
+Proof. by apply: length_all_pairs_t_row. Qed.
+
+Theorem length_all_pairs_t_col {A} (l1 l2 : seq A) :
+    size (all_pairs_col_t l1 l2) = size l1 * size l2.
 Proof.
-  intros A l.
-  pose proof (length_all_pairs_t_row A l l).
-  assumption.
+elim: l1=>//=c cs IH; rewrite size_cat size_map {}IH.
+by rewrite mulSn.
 Qed.
 
+Theorem length_all_pairs_col {A} (l : seq A) :
+    size (all_pairs_col l) = size l * size l.
+Proof. by apply: length_all_pairs_t_col. Qed.
 
+Import Order.POrderTheory.
+Import Order.TotalTheory.
+Open Scope order_scope.
+Open Scope ring_scope.
 
-Theorem length_all_pairs_t_col :
-  forall (A : Type) (l1 l2 : list A) ,
-    length (all_pairs_col_t l1 l2) = (length l1 * length l2)%nat.
-Proof.
-  intros A.
-  induction l1; simpl; intros; try auto.
-  rewrite app_length. rewrite map_length.
-  apply f_equal. apply IHl1.
-Qed.
-
-Theorem length_all_pairs_col :
-  forall (A : Type) (l : list A),
-    length (all_pairs_col l) = (length l * length l)%nat.
-Proof.
-  intros A l.
-  pose proof (length_all_pairs_t_col A l l).
-  assumption.
-Qed.
-
-
-
-(* maxlist return the maximum number in list l. 0 in case of empty list *)
-Fixpoint maxlist (l : list Z) : Z :=
-  match l with
-  | [] => 0%Z
-  | [h] => h
-  | h :: t => Z.max h (maxlist t)
-  end.
+(* maxlist return the maximum number in seq l. 0 in case of empty seq *)
+Definition maxlist (l : seq int) : int :=
+  if l is h::t then
+  foldr Order.max h t   (*\big[Order.max/h]_(i <- t) i*)
+  else 0%:Z.
 
 (* give two numbers m and n with proof that m < n then it return the
    proof that maximum of m and n is n *)
-Lemma max_two_integer : forall (m n : Z), m < n -> Z.max m n = n.
+Lemma max_two_integer (m n : int) : m < n -> Order.max m n = n.
+Proof. by move=>H; apply/eqP; rewrite eq_maxr; apply: ltW. Qed.
+
+(* Shows the prop level existence of element x in seq l >= s if maximum element of
+   seq l >= s  *)
+Lemma max_of_nonempty_list (l : seq int) (s : int) :
+    ~~ nilp l ->
+    reflect (exists2 x, x \in l & s <= x) (s <= maxlist l).
 Proof.
-  intros m n H; apply Z.max_r; lia.
+case: l=>//=h t _; rewrite foldrE.
+suff: (s <= \big[Order.max/h]_(j <- t) j = has (>= s) (h :: t)).
+- by move=>->; apply: hasP.
+rewrite /= -big_has; case H: (s <= h)=>/=; last first.
+- rewrite (@big_morph _ _ (>= s) false orb) //.
+  by move=>x y; rewrite le_maxr.
+elim: t=>/=; first by rewrite big_nil.
+by move=>t ts IH; rewrite big_cons le_maxr IH orbT.
 Qed.
 
-(* Shows the prop level existence of element x in list l >=  s if maximum element of
-   list l >= s  *)
-Lemma max_of_nonempty_list :
-  forall (A : Type) (l : list A) (H : l <> nil) (H1 : forall x y : A, {x = y} + {x <> y}) (s : Z) (f : A -> Z),
-    maxlist (map f l) >= s <-> exists (x:A), In x l /\ f x >= s.
+(*
+Lemma max_of_nonempty_list {A : eqType} (l : seq A) (s : int) (f : A -> int) :
+    ~~ nilp l ->
+    reflect (exists2 x, x \in l & s <= f x) (s <= maxlist (map f l)).
 Proof.
-  split; intros. generalize dependent l.
-  induction l; intros. specialize (H eq_refl). inversion H.
-  pose proof (list_eq_dec H1 l []).
-  destruct H2. exists a. rewrite e. intuition. rewrite e in H0.
-  simpl in H0. auto.
-  assert (Hm : {f a >= maxlist (map f l)} + {f a < maxlist (map f l)}) by
-      apply (Z_ge_lt_dec (f a) (maxlist (map f l))).
-  destruct Hm. rewrite map_cons in H0.
-  pose proof (exists_last n).  destruct X as [l1 [x l2]].
-  assert (maxlist (f a :: map f l) = Z.max (f a) (maxlist (map f l))).
-  { destruct l1. simpl in l2. rewrite l2. simpl. auto.
-    rewrite l2. simpl. auto. }
-  pose proof (Z.ge_le _ _ g). pose proof (Z.max_l _ _ H3).
-  rewrite H2 in H0. rewrite H4 in H0. exists a. intuition.
-  rewrite map_cons in H0. pose proof (exists_last n). destruct X as [l1 [x l2]].
-  assert (maxlist (f a :: map f l) = Z.max (f a) (maxlist (map f l))).
-  { destruct l1. simpl in l2. rewrite l2. simpl. auto.
-    rewrite l2. simpl. auto. }
-  rewrite H2 in H0. pose proof (max_two_integer _ _ l0). rewrite H3 in H0.
-  specialize (IHl n H0). destruct IHl. exists x0. intuition.
-  destruct H0 as [x [H2 H3]].
-  induction l. specialize (H eq_refl). inversion H.
-  pose proof (list_eq_dec H1 l []). destruct H0.
-  (* empty list *)
-  subst. simpl in *. destruct H2. subst. auto. inversion H0.
-  (* not empty list *)
-  rewrite map_cons. pose proof (exists_last n). destruct X as [l1 [x0 H4]].
-  assert (maxlist (f a :: map f l) = Z.max (f a) (maxlist (map f l))).
-  { destruct l1. simpl in H4. rewrite H4. simpl. auto.
-    rewrite H4. simpl. auto. }
-  rewrite H0. unfold Z.max. destruct (f a ?= maxlist (map f l)) eqn:Ht.
-  destruct H2. subst. auto. pose proof (proj1 (Z.compare_eq_iff _ _) Ht).
-  specialize (IHl n H2). rewrite H5. auto.
-  destruct H2. subst.
-  pose proof (proj1 (Z.compare_lt_iff _ _) Ht). lia.
-  apply IHl. assumption. assumption.
-  destruct H2. subst. assumption. specialize (IHl n H2).
-  pose proof (proj1 (Z.compare_gt_iff _ _) Ht).  lia.
+move=>H; have Hm: ~~ nilp (map f l) by rewrite /nilp size_map.
+apply: equivP; first by apply: max_of_nonempty_list'.
+split; case=>x.
+- by case/mapP=>y Hy -> Hs; exists y.
+by move=>Hx Hs; exists (f x)=>//; apply/map_f.
+Qed.
+*)
+
+Lemma max_of_nonempty_list_eq (l : seq int) (s : int) :
+    ~~ nilp l ->
+    s == maxlist l -> exists2 x, x \in l & s = x.
+Proof.
+case: l=>//=h t _; rewrite foldrE big_seq_cond.
+elim/big_ind: _.
+- by move/eqP=>->; exists h=>//=; rewrite inE eq_refl.
+- by move=>x y Hx Hy; rewrite maxElt; case: ifP.
+by move=>i; rewrite andbT=>Hi /eqP ->; exists i=>//; rewrite inE Hi orbT.
 Qed.
 
+(*
 Lemma max_of_nonempty_list_equal :
-  forall (A : Type) (l : list A) (H : l <> nil) (H1 : forall x y : A, {x = y} + {x <> y}) (s : Z) (f : A -> Z),
-    maxlist (map f l) = s -> exists (x:A), In x l /\ f x = s.
-Proof.
-  intros ?.
-  induction l.
-  + intros. intuition.
-  + intros.
-    destruct l.
-    simpl in *. exists a. auto.
-
-    assert (a0 :: l <> []).
-    intuition. inversion H2.
-    remember (a0 :: l) as l1.
-    rewrite map_cons in H0.
-    assert (maxlist (f a :: map f l1) = Z.max (f a) (maxlist (map f l1))).
-    destruct l1. intuition. auto.
-
-    rewrite H0 in H3. symmetry in H3.
-    assert (Hm : {f a >= maxlist (map f l1)} + {f a < maxlist (map f l1)}) by
-      apply (Z_ge_lt_dec (f a) (maxlist (map f l1))).
-    destruct Hm.  Search Z.max.
-    pose proof (Zmax_left _ _ g).
-    rewrite H4 in H3. exists a. intuition.
-    pose proof (max_two_integer (f a) (maxlist (map f l1)) l0).
-    rewrite H4 in H3.
-    pose proof (IHl H2 H1 s f H3).
-    destruct H5.  exists x. split.
-    simpl. right. intuition. intuition.
-Qed.
-
-
-
+  forall (A : Type) (l : seq A) (H : l <> nil) (H1 : forall x y : A, {x = y} + {x <> y}) (s : Z) (f : A -> Z),
+    maxlist (map f l) = s -> exists (x:A), \in x l /\ f x = s.
+*)
 
 (* minimum of two integers m and n is >= s then both numbers are
    >= s *)
-Lemma z_min_lb : forall m n s, Z.min m n >= s <-> m >= s /\ n >= s.
+   (*
+Lemma z_min_lb (m n s : int) : Order.min m n >= s <-> (m >= s) && (n >= s).
+Proof. by rewrite le_minr. Qed.
+*)
+(* if size of seq l >= 1 then  l is nonempty *)
+(*
+Lemma exists_list {A} (l : seq A) (n : nat) : (0 < size l)%nat -> exists a ls, l = a :: ls.
+Proof. by case: l=>//= a ls _; exists a, ls. Qed.
+*)
+(* If a in seq l and x in not in seq l then x <> a *)
+(*
+Lemma not_equal_elem {A : eqType} (a x : A) (l : seq A) :
+    a \in l -> x \notin l -> x != a.
+Proof. by move=>Ha; apply: contra=>/eqP->. Qed.
+*)
+(* all the elements appearing in l also appears in seq c *)
+Definition covers {A : eqType} (c l : seq A) := {subset l <= c}.
+
+(*
+Lemma size_ind {T} P :
+  (forall xs, size xs = 0 -> P xs) ->
+  (forall n, (forall xs, size xs <= n -> P xs)%N -> forall xs, size xs <= n.+1 -> P xs)%N ->
+  forall (xs : seq T), P xs.
 Proof.
-  split; intros. unfold Z.min in H.
-  destruct (m ?= n) eqn:Ht.
-  pose proof (proj1 (Z.compare_eq_iff _ _) Ht). intuition.
-  pose proof (proj1 (Z.compare_lt_iff _ _) Ht). intuition.
-  pose proof (proj1 (Z.compare_gt_iff _ _) Ht). intuition.
-  destruct H as [H1 H2].
-  unfold Z.min. destruct (m ?= n) eqn:Ht; auto.
+(* from https://stackoverflow.com/a/45883068/919707 *)
+move=>H0 Hn xs; move: {2}(size _) (leqnn (size xs)) =>n; elim: n xs=>[|n IH] xs.
+- by rewrite leqn0=>/eqP; apply: H0.
+by apply/Hn/IH.
 Qed.
+*)
 
-(* if length of list l >= 1 then  l is nonempty *)
-Lemma exists_list : forall (A : Type) (l : list A) (n : nat),
-    (length l >= S n)%nat -> exists a ls, l = a :: ls.
+(* split the seq l at duplicate elements given the condition that c covers l *)
+Lemma list_split_dup_elem {A : eqType} (c l : seq A) (x0 : A) :
+    (size l > size c)%N ->
+    covers c l -> exists (a : A) l1 l2 l3, l = l1 ++ (a :: l2) ++ (a :: l3).
 Proof.
-  intros A l. destruct l eqn: Ht; intros; simpl in H. inversion H.
-  exists a, l0. reflexivity.
-Qed.
-
-(* If a in list l and x in not in list l then x <> a *)
-Lemma not_equal_elem : forall (A : Type) (a x : A) (l : list A),
-    In a l -> ~ In x l -> x <> a.
-Proof.
-  intros A a x l H1 H2.
-  induction l. inversion H1.
-  specialize (proj1 (not_in_cons x a0 l) H2); intros.
-  simpl in H1. destruct H as [H3 H4]. destruct H1.
-  subst. assumption. apply IHl. assumption. assumption.
-Qed.
-
-(* all the elements appearing in l also appears in list c *)
-Definition covers (A : Type) (c l : list A) := forall x : A, In x l -> In x c.
-
-(* split the list l at duplicate elements given the condition that c covers l *)
-Lemma list_split_dup_elem : forall (A : Type) (n : nat) (c : list A) (H1 : forall x y : A, {x = y} + {x <> y}),
-    length c = n -> forall (l : list A) (H : (length l > length c)%nat),
-      covers A c l -> exists (a : A) l1 l2 l3, l = l1 ++ (a :: l2) ++ (a :: l3).
-Proof.
-  intros A n. induction n; intros. unfold covers in H1. rewrite H in H0.
-  unfold covers in H2. pose proof (proj1 (length_zero_iff_nil c) H).
-  rewrite H3 in H2. simpl in H2. pose proof (exists_list _ _ _ H0).
-  destruct H4 as [a [ls H4]]. rewrite H4 in H2. specialize (H2 a (in_eq a ls)). inversion H2.
-  rewrite H in H0. pose proof (exists_list _ _ _ H0).
-  destruct H3 as [l0 [ls H3]].
-  pose proof (in_dec H1 l0 ls). destruct H4.
-  pose proof (in_split l0 ls i). destruct H4 as [l1 [l2 H4]].
-  rewrite H4 in H3. exists l0, [], l1, l2. simpl. auto.
-  unfold covers in H2. rewrite H3 in H2.
-  pose proof (H2 l0 (in_eq l0 ls)).
-  pose proof (in_split l0 c H4). destruct H5 as [l1 [l2 H5]].
-  rewrite H5 in H. rewrite app_length in H. simpl in H.
-  assert (Ht : (length l1 + S (length l2))%nat = (S (length l1 + length l2))%nat) by lia.
-  rewrite Ht in H. clear Ht. inversion H. clear H.
-  rewrite <- app_length in H7.
-  assert ((length ls > length (l1 ++ l2))%nat).
-  { rewrite H7. rewrite H3 in H0. simpl in H0. lia. }
-  specialize (IHn (l1 ++ l2) H1 H7 ls H).
-  assert (covers A (l1 ++ l2) ls).
-  { unfold covers. intros x Hin.
-    specialize (not_equal_elem _ x l0 ls Hin n0); intros.
-    specialize (H2 x (or_intror Hin)).
-    rewrite H5 in H2.
-    pose proof (in_app_or l1 (l0 :: l2) x H2). destruct H8.
-    apply in_or_app. left. assumption.
-    simpl in H8. destruct H8. contradiction.
-    apply in_or_app. right. assumption. }
-  specialize (IHn H6). destruct IHn as [a [l11 [l22 [l33 H10]]]].
-  exists a, (l0 :: l11), l22, l33.  simpl. rewrite H10 in H3. assumption.
+move=>Hs Hc; suff: ~~ uniq l; last first.
+- rewrite -ltn_size_undup; apply/leq_ltn_trans/Hs.
+  apply: uniq_leq_size; first by exact: undup_uniq.
+  by move=>z Hz; apply: Hc; apply/mem_subseq/Hz; exact: undup_subseq.
+case/(uniqPn x0)=>i[j][Hij Hj E].
+move: (ltn_trans Hij Hj)=>/[dup] Hi /(mem_nth x0); rewrite -has_pred1=>H1.
+rewrite -(cat_take_drop i l) (drop_nth x0 Hi).
+rewrite -(cat_take_drop (j-i.+1) (drop i.+1 l)) drop_drop subnK // (drop_nth x0 Hj).
+exists (nth x0 l j), (take i l), (take (j - i.+1) (drop i.+1 l)), (drop j.+1 l).
+by rewrite E.
 Qed.
 
 (* if maximum of two numbers m, n >= s then either m >= s or
    n >= s *)
-Lemma z_max_lb : forall m n s, Z.max m n >= s <-> m >= s \/ n >= s.
-Proof.
-  split; intros. unfold Z.max in H. destruct (m ?= n) eqn : Ht.
-  left. auto. right. auto. left. auto.
-  destruct H. unfold Z.max. destruct (m ?= n) eqn: Ht.
-  auto. pose proof (proj1 (Z.compare_lt_iff _ _) Ht). lia. lia.
-  unfold Z.max. destruct (m ?= n) eqn:Ht.
-  pose proof (proj1 (Z.compare_eq_iff _ _) Ht). lia.
-  lia. pose proof (proj1 (Z.compare_gt_iff _ _) Ht). lia.
-Qed.
+Lemma z_max_lb (m n s : int) : Order.max m n >= s <-> (m >= s) || (n >= s).
+Proof. by rewrite le_maxr. Qed.
 
-(* if length of list l is > n then there is a natural number
-   p such that p + n = length of list l *)
-Lemma list_and_num : forall (A : Type) (n : nat) (l : list A),
-    (length l > n)%nat -> exists p, (length l = p + n)%nat.
-Proof.
-  intros A n l H. induction l. inversion H.
-  simpl in *. apply gt_S in H. destruct H. specialize (IHl H). destruct IHl as [p IHl].
-  exists (S p). lia. exists 1%nat. lia.
-Qed.
+(* if size of seq l is > n then there is a natural number
+   p such that p + n = size of seq l *)
+Lemma list_and_num {A} (n : nat) (l : seq A) :
+    (size l > n)%N -> exists p, (size l = p + n)%N.
+Proof. by move=>H; exists (size l - n); rewrite subnK //; apply: ltnW. Qed.
 
-(* if forallb f l returns false then existance of element x in list l
-   such that f x = false, and if x is in list l and f x = false then
+(* if forallb f l returns false then existance of element x in seq l
+   such that f x = false, and if x is in seq l and f x = false then
    forallb f l will evaluate to false *)
-Lemma forallb_false : forall (A : Type) (f : A -> bool) (l : list A),
-    forallb f l = false <-> (exists x, In x l /\ f x = false).
+(*
+Lemma forallb_false {A : eqType} (f : pred A) (l : seq A) :
+    reflect (exists2 x, x \in l & ~~ f x) (~~ all f l).
+Proof. by exact: allPn. Qed.
+*)
+
+Lemma upperbound_of_nonempty_list (l : seq int) (s : int) :
+    ~~ nilp l ->
+    reflect (forall x, x \in l -> x <= s) (maxlist l <= s).
 Proof.
-  intros A f l. split. intros H. induction l. simpl in H. inversion H.
-  simpl in H. apply andb_false_iff in H. destruct H.
-  exists a. split. simpl. left. auto. assumption.
-  pose proof IHl H. destruct H0. exists x. destruct  H0 as [H1 H2].
-  split. simpl. right. assumption. assumption.
-  intros. destruct H as [x [H1 H2]]. induction l. inversion H1.
-  simpl. apply andb_false_iff. simpl in H1. destruct H1.
-  left. congruence. right. apply IHl. assumption.
+case: l=>//=h t _; rewrite foldrE.
+suff: (\big[Order.max/h]_(x <- t) x <= s = all (<= s) (h :: t)).
+- by move=>->; apply: allP.
+rewrite /= -big_all; case H: (h <= s)=>/=.
+- rewrite (@big_morph _ _ (fun z => z <= s) true andb) //.
+  by move=>x y; rewrite le_maxl.
+elim: t=>/=; first by rewrite big_nil.
+by move=>t ts IH; rewrite big_cons le_maxl IH andbF.
 Qed.
 
-Lemma upperbound_of_nonempty_list :
-  forall (A : Type) (l : list A)
-    (H : l <> nil) (H1 : forall x y : A, {x = y} + {x <> y}) (s : Z) (f : A -> Z),
-    maxlist (map f l) <= s <-> forall x, In x l -> f x <= s.
+(*
+Lemma upperbound_of_nonempty_list' {A : eqType} (l : seq A) (s : int) (f : A -> int) :
+    ~~ nilp l ->
+    reflect (forall x, x \in l -> f x <= s) (maxlist (map f l) <= s).
 Proof.
-  intros A l H H1 s f.
-  split; intros.
-  induction l.
-  + congruence.
-  + destruct l.
-    inversion H2; subst.
-    cbn in *. auto.
-    inversion H3.
-    assert (Ht : (map f (a :: a0 :: l)) = f a :: map f (a0 :: l)) by auto.
-    rewrite Ht in H0. clear Ht.
-    assert (Ht :  maxlist (f a :: map f (a0 :: l)) = Z.max (f a) (maxlist (map f (a0 :: l))))
-      by auto. rewrite Ht in H0. clear Ht.
-    assert (Ht : {f a >= maxlist (map f (a0 :: l))} + {f a < maxlist (map f (a0 :: l))}) by
-        apply (Z_ge_lt_dec (f a) (maxlist (map f (a0 :: l)))).
-    destruct H2.  subst.
-    destruct Ht.  Require Import Psatz.
-    assert (Hz :  Z.max (f x) (maxlist (map f (a0 :: l))) = f x) by lia.
-    rewrite Hz in H0. auto.
-    assert (Hz : Z.max (f x) (maxlist (map f (a0 :: l))) = maxlist (map f (a0 :: l))) by lia.
-    rewrite Hz in H0. lia.
-    destruct Ht.
-    assert (H3 : a0 :: l <> []). intro. congruence.
-    assert (H4 :  maxlist (map f (a0 :: l)) <= s) by lia.
-    apply IHl; try auto.
-    assert (H3 : a0 :: l <> []). intro. congruence.
-    assert (H4 :  maxlist (map f (a0 :: l)) <= s) by lia.
-    apply IHl; try auto.
-
-    (* first half finished *)
-
-  + induction l.
-    congruence.
-    destruct l. cbn.
-    pose proof (H0 a). firstorder.
-    assert (Ht : (map f (a :: a0 :: l)) = f a :: map f (a0 :: l)) by auto.
-    rewrite Ht. clear Ht.
-    assert (Ht :  maxlist (f a :: map f (a0 :: l)) = Z.max (f a) (maxlist (map f (a0 :: l))))
-      by auto. rewrite Ht. clear Ht.
-    assert (Ht : {f a >= maxlist (map f (a0 :: l))} + {f a < maxlist (map f (a0 :: l))}) by
-        apply (Z_ge_lt_dec (f a) (maxlist (map f (a0 :: l)))).
-    destruct Ht.
-    pose proof (H0 a (in_eq a (a0 :: l))).
-    lia.
-    assert (Ht : Z.max (f a) (maxlist (map f (a0 :: l))) = maxlist (map f (a0 :: l))) by lia.
-    rewrite Ht.  apply IHl. intro. congruence.
-    intros x Hx. firstorder.
+move=>H; have Hm: ~~ nilp (map f l) by rewrite /nilp size_map.
+apply: equivP; first by apply: upperbound_of_nonempty_list.
+split=>H0 x.
+- by move=>Hx; apply: H0; apply/map_f.
+by case/mapP=>z Hz ->; apply: H0.
 Qed.
+*)
 
-(*  Shows the type level existence of element x in list l >=  s if maximum element of
-   list l >= s *)
-Lemma max_of_nonempty_list_type :
-  forall (A : Type) (l : list A) (H : l <> nil) (H1 : forall x y : A, {x = y} + {x <> y})
-    (s : Z) (f : A -> Z), maxlist (map f l) >= s -> existsT (x:A), In x l /\ f x >= s.
+(*
+(*  Shows the type level existence of element x in seq l >=  s if maximum element of
+   seq l >= s *)
+Lemma max_of_nonempty_list_type {A : eqType} (l : seq A) :
+  ~~ nilp l ->
+    (s : Z) (f : A -> Z), maxlist (map f l) >= s -> existsT (x:A), \in x l /\ f x >= s.
 Proof.
   intros A.
-  assert (Hm : forall (a b : A) (l : list A) (f : A -> Z),
+  assert (Hm : forall (a b : A) (l : seq A) (f : A -> Z),
              maxlist (f a :: map f (b :: l)) = Z.max (f a) (maxlist (map f (b :: l)))) by auto.
   refine (fix F l {struct l} :=
             fun H H1 s f =>
               match l as l0 return (l = l0 -> l0 <> [] ->
                                     maxlist (map f l0) >= s ->
-                                    existsT (x : A), In x l0 /\ f x >= s) with
+                                    existsT (x : A), \in x l0 /\ f x >= s) with
               | [] => fun _ H =>  match H eq_refl with end
               | h :: t =>
                 fun Heq Hn =>
                   match t as t0 return (t = t0 -> (h :: t0) <> [] ->
                                         maxlist (map f (h :: t0)) >= s ->
-                                        existsT (x : A), In x (h :: t0) /\ f x >= s) with
+                                        existsT (x : A), \in x (h :: t0) /\ f x >= s) with
                   | [] => fun _ H1 H2 => existT _ h (conj (in_eq h []) H2)
                   | h1 :: t1 =>
                     let Hmax := (Z_ge_lt_dec (f h) (maxlist (map f (h1 :: t1)))) in
@@ -485,21 +312,21 @@ Proof.
   destruct F as [x [Fin Fx]]. rewrite <- H1.
   exists x. intuition.
 Defined.
+*)
 
-
-
-(* if forallb f l returns false then type level existance of element x in list l
+(*
+(* if forallb f l returns false then type level existance of element x in seq l
    such that f x = false *)
-Lemma forallb_false_type : forall (A : Type) (f : A -> bool) (l : list A),
-    forallb f l = false -> existsT x, In x l /\ f x = false.
+Lemma forallb_false_type {A} (f : pred A) (l : seq A) :
+    ~~ all f l -> existsT x, \in x l /\ f x = false.
 Proof.
   refine (fun A f =>
             fix F l :=
             match l as l0 return (forallb f l0 = false ->
-                                  existsT x, In x l0 /\ f x = false) with
+                                  existsT x, \in x l0 /\ f x = false) with
             | [] => fun H => match (diff_true_false H) with end
             | h :: t =>
-              fun H => match f h as v return (f h = v -> existsT x, In x (h :: t) /\ f x = false) with
+              fun H => match f h as v return (f h = v -> existsT x, \in x (h :: t) /\ f x = false) with
                     | false => fun H1 => existT _ h (conj (in_eq h t) H1)
                     | true => fun H1 => _
                     end eq_refl
@@ -508,60 +335,32 @@ Proof.
   simpl in H. rewrite H1 in H. simpl in H. pose proof (F t H) as Ft.
   destruct Ft as [x [Fin Fx]]. exists x. intuition.
 Defined.
-
-Lemma filter_empty : forall (A : Type) (l : list A) (f : A -> bool),
-    filter f l = [] <->
-    (forall x, In x l -> f x = false).
+*)
+Lemma filter_empty {A : eqType} (l : seq A) (f : pred A) :
+    reflect (forall x, x \in l -> ~~ f x) (nilp (filter f l)).
 Proof.
-  intros A. induction l.
-  split; intros. inversion H0. reflexivity.
-  split; intros. destruct H0. simpl in H.
-  destruct (f a) eqn : Ht. inversion H.
-  rewrite <- H0. assumption.
-  simpl in H. destruct (f a). inversion H.
-  pose proof (proj1 (IHl f) H x H0). assumption.
-  simpl. destruct (f a) eqn: Ht.
-  pose proof (H a (in_eq a l)). congruence.
-  pose proof (IHl f). destruct H0.
-  apply H1. intros. firstorder.
+suff: (nilp [seq x <- l | f x] = all (negb \o f) l).
+- by move=>->; apply: allP.
+rewrite /nilp -all_pred0 all_filter; apply: eq_in_all.
+by move=>z Hz /=; case: (f z).
 Qed.
 
-Lemma complementary_filter_perm A (p: A -> bool) (l: list A):
-  Permutation l (filter p l ++ filter (compose negb p) l).
-Proof with auto.
-  induction l...
-  simpl.
-  unfold compose.
-  destruct (p a); simpl...
-  apply Permutation_cons_app...
-Qed.
+Lemma complementary_filter_perm {A : eqType} (p: pred A) (l: seq A):
+  perm_eq l (filter p l ++ filter (predC p) l).
+Proof. by rewrite perm_sym perm_filterC. Qed.
 
-Lemma complementary_filter_In : forall
-    (A : Type) (l : list A) (f : A -> bool) (g : A -> bool)
-    (H : forall x, In x l -> f x = negb (g x)),
-    Permutation l (filter f l ++ filter g l).
-Proof with auto.
-  intros A l f g H.
-  induction l...
-  simpl.
-  destruct (f a) eqn : Ht; simpl...
-  pose proof (H a (in_eq a l)).
-  rewrite Ht in H0.
-  symmetry in H0.
-  apply negb_true_iff in H0.
-  rewrite H0. apply perm_skip. apply IHl.
-  intros. apply H. simpl. right. auto.
-  pose proof (H a (in_eq a l)).
-  rewrite Ht in H0. symmetry in H0. apply negb_false_iff in H0.
-  rewrite H0.
-  apply Permutation_cons_app...
-  apply IHl. intros.
-  apply H. simpl. right. auto.
+Lemma complementary_filter_In {A : eqType} (l : seq A) (f : pred A) (g : pred A) :
+    (forall x, x \in l -> f x = ~~ g x) ->
+    perm_eq l (filter f l ++ filter g l).
+Proof.
+move=>H; rewrite -(perm_filterC f) perm_cat2l.
+rewrite (eq_in_filter (a2:=g)) // => z Hz /=.
+by rewrite H // negbK.
 Qed.
 
 (*
-Lemma not_equal_elem : forall (A : Type) (a x : A) (l : list A),
-    In a l -> ~ In x l -> x <> a.
+Lemma not_equal_elem : forall (A : Type) (a x : A) (l : seq A),
+    \in a l -> ~ \in x l -> x <> a.
 Proof.
   intros A a x l H1 H2.
   induction l. inversion H1.
@@ -570,93 +369,63 @@ Proof.
   subst. assumption. apply IHl. assumption. assumption.
 Qed. *)
 
-Theorem transitive_dec_first :
-  forall (A : Type) (Hcd : forall (c d : A), {c = d} + {c <> d})
-         (P : A -> A -> Prop) (Hp : forall (c d : A), {P c d} + {~P c d}) (x y z : A),
-    {P x y -> P y z -> P x z} +
-    {~(P x y -> P y z -> P x z)}.
+Theorem transitive_dec_first {A} (P : A -> A -> Prop) :
+   (forall c d, decidable (P c d)) ->
+   forall (x y z : A), decidable (P x y -> P y z -> P x z).
 Proof.
-  intros.
-  destruct (Hp x y), (Hp y z), (Hp x z); intuition.
+move=>H x y z.
+apply/decP/implyPP; first by apply/sumboolP/H.
+by apply: implyPP; apply/sumboolP/H.
 Qed.
 
-
-
-Theorem transitive_dec_second :
-  forall (A : Type) (Hcd : forall (c d : A), {c = d} + {c <> d})
-         (P : A -> A -> Prop) (Hp : forall (c d : A), {P c d} + {~P c d}) (x y: A) (l : list A),
-    {forall z, In z l -> P x y -> P y z -> P x z} +
-    {~(forall z, In z l -> P x y -> P y z -> P x z)}.
+Theorem transitive_dec_second {A : eqType} (P : A -> A -> Prop) (l : seq A):
+   (forall c d, decidable (P c d)) ->
+   forall (x y : A), decidable (forall z, z \in l -> P x y -> P y z -> P x z).
 Proof.
-  intros.
-  induction l.
-  left; intuition.
-  destruct IHl.
-  pose proof (transitive_dec_first A Hcd P Hp x y a).
-  destruct H.
-  left. intros. destruct H. subst. auto.
-  intuition.
-  right. unfold not. intros. apply n. intros.
-  intuition.
-  pose proof (transitive_dec_first A Hcd P Hp x y a).
-  destruct H.
-  right. unfold not. intros. apply n.
-  intuition.
-  right. intuition.
+move=>H x y; elim: l=>[|h t]; first by left.
+case: (transitive_dec_first _ H x y h)=>H1; last first.
+- move=>_; right; move: H1; apply: contra_not; apply.
+  by rewrite inE eq_refl.
+case=>IH.
+- left=>z; rewrite inE; case/orP; last by apply: IH.
+  by move/eqP=>->.
+right; move: IH; apply: contra_not=>+ z Hz; apply.
+by rewrite inE Hz orbT.
 Qed.
 
-Theorem transitive_dec_third :
-  forall (A : Type) (Hcd : forall (c d : A), {c = d} + {c <> d})
-         (P : A -> A -> Prop) (Hp : forall (c d : A), {P c d} + {~P c d}) (x : A) (l1 l2 : list A),
-    {forall y z, In y l1 -> In z l2 -> P x y -> P y z -> P x z} +
-    {~(forall y z, In y l1 -> In z l2 -> P x y -> P y z -> P x z)}.
+Theorem transitive_dec_third {A : eqType} (P : A -> A -> Prop) (l1 l2 : seq A):
+    (forall c d, decidable (P c d)) ->
+    forall (x : A), decidable (forall y z, y \in l1 -> z \in l2 -> P x y -> P y z -> P x z).
 Proof.
-  intros.
-  induction l1.
-  left; intuition.
-
-  destruct IHl1.
-  pose proof (transitive_dec_second A Hcd P Hp x a l2).
-  destruct H.
-  left. intros. destruct H.
-  subst. intuition. apply p with y; intuition.
-  right. unfold not. intros. apply n.  intros.
-  apply H with a; intuition.
-  pose proof (transitive_dec_second A Hcd P Hp x a l2).
-  destruct H.
-  right. unfold not. intros. apply n. intros. apply H with y; intuition.
-  right. unfold not. intros. apply n. intros. apply H with y; intuition.
+move=>H x; elim: l1=>[|h t]; first by left.
+case: (transitive_dec_second _ l2 H x h)=>H1; last first.
+- move=>_; right; move: H1; apply: contra_not=>+ z; apply.
+  by rewrite inE eq_refl.
+case=>IH.
+- left=>y z; rewrite inE; case/orP; last by apply: IH.
+  by move/eqP=>->; apply: H1.
+right; move: IH; apply: contra_not=>+ y z Hy; apply.
+by rewrite inE Hy orbT.
 Qed.
 
-Theorem transitive_dec_fourth :
-  forall (A : Type) (Hcd : forall (c d : A), {c = d} + {c <> d})
-         (P : A -> A -> Prop) (Hp : forall (c d : A), {P c d} + {~P c d}) (l1 l2 l3 : list A),
-    {forall x y z, In x l1 -> In y l2 -> In z l3 -> P x y -> P y z -> P x z} +
-    {~(forall x y z, In x l1 -> In y l2 -> In z l3 -> P x y -> P y z -> P x z)}.
+Theorem transitive_dec_fourth {A : eqType} (P : A -> A -> Prop) (l1 l2 l3 : seq A):
+    (forall c d, decidable (P c d)) ->
+    decidable (forall x y z, x \in l1 -> y \in l2 -> z \in l3 -> P x y -> P y z -> P x z).
 Proof.
-  intros.
-  induction l1.
-  left; intuition.
-
-  destruct IHl1.
-  pose proof (transitive_dec_third A Hcd P Hp a l2 l3).
-  destruct H.
-  left. intros. destruct H. subst. apply p0 with y; intuition.
-  apply p with y; intuition.
-  right. unfold not. intros. apply n. intros.
-  apply H with y; intuition.
-  right. unfold not. intros. apply n. intros.
-  apply H with y; intuition.
+move=>H; elim: l1=>[|h t]; first by left.
+case: (transitive_dec_third _ l2 l3 H h)=>H1; last first.
+- move=>_; right; move: H1; apply: contra_not=>+ y z; apply.
+  by rewrite inE eq_refl.
+case=>IH.
+- left=>x y z; rewrite inE; case/orP; last by apply: IH.
+  by move/eqP=>->; apply: H1.
+right; move: IH; apply: contra_not=>+ x y z Hx; apply.
+by rewrite inE Hx orbT.
 Qed.
 
-Theorem transitive_dec:
-  forall (A : Type) (Hcd : forall (c d : A), {c = d} + {c <> d})
-         (P : A -> A -> Prop) (Hp : forall (c d : A), {P c d} + {~P c d}) (l : list A),
-    {forall x y z, In x l -> In y l -> In z l -> P x y -> P y z -> P x z} +
-    {~(forall x y z, In x l -> In y l -> In z l -> P x y -> P y z -> P x z)}.
-Proof.
-  intros. pose proof (transitive_dec_fourth A Hcd P Hp l l l). auto.
-Qed.
+Theorem transitive_dec {A : eqType} (P : A -> A -> Prop) (l : seq A):
+    (forall c d, decidable (P c d)) ->
+    decidable (forall x y z, x \in l -> y \in l -> z \in l -> P x y -> P y z -> P x z).
+Proof. by move=>H; apply: transitive_dec_fourth. Qed.
 
 (* End of List Lemma file *)
-
