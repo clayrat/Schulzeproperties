@@ -1,0 +1,5 @@
+-Q . Schulze
+-arg "-w -notation-overridden,-local-declaration,-redundant-canonical-projection,-projection-no-head-constant"
+
+theories/ListLemma.v
+theories/Schulzeprop.v
