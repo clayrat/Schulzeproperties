@@ -7,21 +7,16 @@ Require Import Coq.Arith.Compare_dec.
 Require Import Bool.Sumbool.
 Require Import Bool.Bool.
 Require Import Coq.Logic.ConstructiveEpsilon.
-Require Import Coq.ZArith.ZArith.*)
-Require Import Lia.
+Require Import Coq.ZArith.ZArith.
+Require Import Lia.*)
 
 From Coq Require Import ssreflect ssrbool ssrfun.
-From mathcomp Require Import ssrnat seq eqtype fintype ssrint order bigop path.
+From mathcomp Require Import ssrnat seq choice eqtype fintype ssrint ssralg order bigop path.
 From Schulze Require Import ListLemma.
 (*
 Require Import Psatz.
 Import ListNotations.
 Open Scope int.
-
-Notation "'existsT' x .. y , p" :=
-  (sigT (fun x => .. (sigT (fun y => p)) ..))
-    (at level 200, x binder, right associativity,
-     format "'[' 'existsT' '/ ' x .. y , '/ ' p ']'") : type_scope.
 *)
 
 Import Order.POrderTheory.
@@ -29,36 +24,53 @@ Import Order.TotalTheory.
 Open Scope order_scope.
 Open Scope ring_scope.
 
+Import GRing.Theory.
 Section Properties.
 
   Variable cand : finType.
-  Hypothesis cand_nonempty : 0 < #|{ : cand}|.
+  Hypothesis cand_nonempty : (0 < #|{ : cand}|)%N.
 
 
   Section Evote.
     (** Section 2: Specification of Schulze Vote Counting **)
 
     (* marg is the margin in Schulze counting, i.e. marg c d is the number of
-       voters that perfer c over d. The existence of the margin function
+       voters that prefer c over d. The existence of the margin function
        is assumed for the specification of Schulze Voting and will be
        constructed from incoming ballots later *)
     Variable marg : cand -> cand -> int.
 
+    Fixpoint marg_path (k: int) (c d : cand) (xs : seq cand) : bool :=
+      if xs is x::s then
+        (marg c x >= k) && marg_path k x d s
+      else marg c d >= k.
 
+    Definition Path (k: int) (c d : cand) : Prop :=
+      exists xs : seq cand, marg_path k c d xs.
+
+    Definition PathT (k: int) (c d : cand) : Type :=
+      {xs : seq cand | marg_path k c d xs}.
+
+    (* since cand is finite, we automatically get choice *)
+    (* TODO is this reasonable? *)
+    Lemma Path_choose k c d : Path k c d -> PathT k c d.
+    Proof. by apply: sigW. Qed.
+
+(*
     (* prop-level path *)
     Inductive Path (k: int) : cand -> cand -> Prop :=
     | unit c d   : k <= marg c d ->               Path k c d
     | cons c d e : k <= marg c d -> Path k d e -> Path k c e.
-
+*)
     (* winning condition of Schulze Voting *)
     Definition wins_prop (c: cand) :=
-      forall d: cand, exists k: int,
-        Path k c d /\ (forall l, Path l d c -> l <= k).
+      forall d: cand, exists (k: int) (xs : seq cand),
+        marg_path k c d xs /\ (forall l, Path l d c -> l <= k).
 
     (* dually, the notion of not winning: *)
     Definition loses_prop (c : cand) :=
-      exists (k: int) (d: cand),
-        Path k d c /\ (forall l, Path l c d -> l < k).
+      exists (k: int) (d: cand) (xs : seq cand),
+        marg_path k d c xs /\ (forall l, Path l c d -> l < k).
 
     (** Section 3: A Scrutiny Sheet for the Schulze Method **)
 
@@ -76,26 +88,25 @@ Section Properties.
     Definition coclosed (k : int) (p : pred (cand * cand)) :=
       forall x, p x -> W k p x.
 
-      (* TODO this should be smth like *)
-      (* {xs : seq cand | path (fun x y => k <= marg x y) c xs && belast c xs == d} *)
-      (* i.e. at runtime it's just a list of (intermediate) candidates *)
+
+   (* at runtime it's just a list of (intermediate) candidates *)
+
+
 (*
     (* type-level path to replace prop-level path *)
     Inductive PathT (k: int) : cand -> cand -> Type :=
     | unitT c d : marg c d >= k -> PathT k c d
     | consT c d e : marg c d >= k -> PathT k d e -> PathT k c e.
-
+*)
     (* type-level winning condition in Schulze counting *)
     Definition wins_type c :=
-      forall d : cand, existsT (k : int),
-      ((PathT k c d) *
-       (existsT (f : (cand * cand) -> bool), f (d, c) = true /\ coclosed (k + 1) f))%type.
+      forall d : cand, existsT (k : int) (xs : seq cand) (f : pred (cand * cand)),
+      [/\ marg_path k c d xs, f (d, c) & coclosed (k + 1) f].
 
     (* dually, the type-level condition for non-winners *)
     Definition loses_type (c : cand) :=
-      existsT (k : int) (d : cand),
-      ((PathT k d c) *
-       (existsT (f : (cand * cand) -> bool), f (c, d) = true /\ coclosed k f))%type.
+      existsT (k : int) (d : cand) (xs : seq cand) (f : pred (cand * cand)),
+      [/\ marg_path k d c xs, f (c, d) & coclosed k f].
 
     (* type-level notions of winning and losing are equivalent *)
     (* auxilary lemmas needed for the proof of equivalence     *)
@@ -103,18 +114,14 @@ Section Properties.
     (* statement and proof of equivalence, dually for losing.  *)
 
     (* type-level paths allow to construct evidence for the existence of paths *)
-    Lemma path_equivalence : forall c d k , PathT k c d -> Path k c d.
+    (*
+    Lemma path_equivalence c d k : PathT k c d -> Path k c d.
     Proof.
-      refine
-        (fix F c d k H {struct H}:=
-           match H with
-           | unitT _ cf df mrg => unit _ cf df mrg
-           | consT _ cf df ef mrg t => cons _ cf df ef mrg (F _ _ _ t)
-           end).
+    case=>xs; elim: xs c=>[|x s IH]/= c.
+    - by move=>H; apply: unit.
+    by case/andP=>H /IH H2; apply: (cons _ _ x).
     Qed.
 *)
-
-
     (* mp stands for midpoint and the lemma below shows that for a pair of candidates (a, c)
        with x = (a, c) in W_k p, and a putative midpoint b, we have that marg a b < k or p b c. *)
     Lemma mp_log (k : int) (x : cand * cand) (p : pred (cand * cand)) :
@@ -131,11 +138,13 @@ Section Properties.
       coclosed k f ->
       forall s x y, Path s x y -> f (x, y) -> s < k.
     Proof.
-    move=>Hcc s x y; elim=>[c d| c d e] H.
-    - case/Hcc/andP=>/= Hl _.
+    move=>Hcc s x y [xs]; elim: xs x=>/=.
+    - move=>x H; case/Hcc/andP=>/= Hl _.
       by apply: (le_lt_trans H).
-     move=>Hp IH /[dup] Hf /Hcc; case/andP=>Hl /mp_log /= /(_ d); case/orP=>// Hm.
-     by apply/le_lt_trans/Hm.
+    move=>d t IH x; case/andP=>H Hm /[dup] Hf /Hcc.
+    case/andP=>Hl /mp_log /= /(_ d); case/orP.
+    - by move=>Hd; apply: (IH d).
+    by move=>Hmk; apply/le_lt_trans/Hmk.
     Qed.
 
     Lemma coclosed_path_bound k1 k2 f :
@@ -196,127 +205,95 @@ Section Properties.
       let l := MM n in
       fun c d => linear_search c d l.
 
-
     Lemma M_M_new_equal n c d : M n c d = M_old n c d.
     Proof.
-      induction n. unfold M. simpl. intros c d. rewrite equivalent_m. auto.
-      intros c d.  unfold M in *. simpl. rewrite equivalent_m.
-      assert (Ht: maxlist (map (fun x : cand => int.min (marg c x) (linear_search x d (MM n))) cand_all) =
-                  maxlist (map (fun x : cand => int.min (marg c x) (M_old n x d)) cand_all)).
-      apply f_equal.
-      clear cand_not_nil. clear cand_fin.
-      induction cand_all. auto. simpl. pose proof (IHn a d).
-      rewrite H. apply f_equal. auto.
-      rewrite Ht. rewrite IHn. auto.
+    rewrite /M; elim: n c=>/= [|n IH] c; rewrite equivalent_m //.
+    rewrite IH; congr (Order.max _ (maxlist _)).
+    by apply/eq_in_map=>z _; rewrite IH.
     Qed.
 
+    (* TODO use choice *)
+    (* Theorem iterated_marg_patht : forall n s c d, M n c d >= s -> PathT s c d. *)
 
     (* partial correctness of iterated margin function: if the strength M n c d
        of the strongest path of length <= n+1 between c and d is at least s, then
        c and d can be joined by a type-level path of this strength *)
-    Theorem iterated_marg_patht : forall n s c d, M n c d >= s -> PathT s c d.
+    Theorem iterated_marg_path n s c d : s <= M n c d -> exists xs, marg_path s c d xs.
     Proof.
-      induction n.
-      intros s c d H. constructor. unfold M in *. simpl in *. rewrite equivalent_m in H. auto.
-      intros s c d H. unfold M in *. simpl in H. rewrite equivalent_m in H.
-      unfold int.max in H.
-      destruct (linear_search c d (MM n)
-                              ?= maxlist (map (fun x : cand => int.min (marg c x) (linear_search x d (MM n))) cand_all)).
-      apply IHn. auto.
-      apply max_of_nonempty_list_type in H. destruct H as [x [H1 H2]].
-      apply z_min_lb in H2. destruct H2.
-      specialize (IHn _ _ _ H0). specialize (consT _ _ _ _ H IHn); auto.
-      apply cand_not_nil.  apply dec_cand. apply IHn. assumption.
-    Defined.
-
-
-    (* as type level paths induce prop-level paths, the same as above also holds for prop-level
-       paths *)
-    Lemma iterated_marg_path : forall (n : nat) (s : int) (c d : cand),
-        M n c d >= s -> Path s c d.
-    Proof.
-      intros n s c d Hm.
-      apply path_equivalence. apply iterated_marg_patht with (n := n).
-      assumption.
+    elim: n c=>[|n IH] c; rewrite /M /= equivalent_m.
+    - by move=>H; exists [::].
+    rewrite maxEle; case: (leP (linear_search _ _ _ ))=>/= _; last by apply: IH.
+    move/max_of_nonempty_list.
+    rewrite /nilp size_map -cardE -lt0n cand_nonempty => /(_ erefl).
+    case=>_ /mapP [z _ ->]; rewrite le_minr; case/andP=>H1 /IH [xs Hxs].
+    by exists (z::xs)=>/=; rewrite H1 Hxs.
     Qed.
 
-    (* existence of a a path between c and d of strength s gives an interate of the
+    (* existence of a path between c and d of strength s gives an interate of the
        iterated margin function with value at least s *)
-    Lemma path_iterated_marg : forall (s : int) (c d : cand),
+    Lemma path_iterated_marg (s : int) (c d : cand) :
         Path s c d -> exists n, M n c d >= s.
     Proof.
-      intros s c d H.  induction H.
-      exists 0%nat. unfold M. simpl. rewrite equivalent_m. auto. destruct IHPath.
-      exists (S x). unfold M in *. simpl.  rewrite equivalent_m. apply z_max_lb. right.
-      apply max_of_nonempty_list.
-      apply cand_not_nil. apply dec_cand. exists d.
-      split. pose proof (cand_fin d). auto.
-      apply z_min_lb. split. auto. auto.
+    case=>xs; elim: xs c=>/=.
+    - by move=>c H; exists 0%N; rewrite /M /= equivalent_m.
+    move=>a xs IH c; case/andP=>H /IH [x Hx].
+    exists x.+1; rewrite /M /= equivalent_m le_maxr.
+    apply/orP; right; apply/max_of_nonempty_list.
+    - by rewrite /nilp size_map -cardE -lt0n cand_nonempty.
+    exists (Order.min (marg c a) (M x a d))=>//.
+    - by apply/mapP; exists a=>//; rewrite mem_enum.
+    by rewrite le_minr H.
     Qed.
 
     (* monotonicity of the iterated margin function *)
-    Lemma monotone_M : forall (n m : nat) c d, (n <= m)%nat  -> M n c d <= M m c d.
+    Lemma monotone_M c d :
+      {homo (fun x : nat => M x c d) : n m / (n <= m)%N >-> n <= m}.
     Proof.
-      intros n m c d H.  induction H; simpl; try lia.
-      apply int.ge_le. unfold M at 1. simpl. rewrite equivalent_m.
-      apply z_max_lb with (m := M m c d).
-      left. lia.
+    apply: (homo_leq lexx le_trans)=>n.
+    by rewrite /M /= equivalent_m le_maxr lexx.
     Qed.
 
     (* Here, we view paths as lists of candidates, and str computes the strength of
        a path relative to the given margin function *)
     Fixpoint str c l d :=
-      match l with
-      | [] => marg c d
-      | (x :: xs) => int.min (marg c x)  (str x xs d)
-      end.
+      if l is x::xs
+        then Order.min (marg c x) (str x xs d)
+        else marg c d.
 
     (* the iterated margin function is correct relative to the length of a path *)
-    Lemma path_len_iterated_marg : forall k c d s l,
-        (length l <= k)%nat -> str c l d >= s -> M k c d >= s.
+    Lemma path_len_iterated_marg k c d s l :
+        (size l <= k)%nat -> str c l d >= s -> M k c d >= s.
     Proof.
-      induction k. intros. assert ((length l <= 0)%nat -> l = []).
-      { destruct l. intros. reflexivity.
-        simpl in *. inversion H. }
-      specialize (H1 H). subst. simpl in *. unfold M in *. simpl. rewrite equivalent_m. auto.
-      intros. simpl in *. destruct l. simpl in *.
-      unfold M in *. simpl.
-
-      rewrite equivalent_m. apply z_max_lb.
-      left. apply IHk with []. simpl. lia. simpl. auto.
-      simpl in *. apply z_min_lb in H0. destruct H0.
-      unfold M in *.  simpl.
-      rewrite equivalent_m.
-      apply z_max_lb. right. apply max_of_nonempty_list.
-      apply cand_not_nil. apply dec_cand. exists c0. split. specialize (cand_fin c0). trivial.
-      apply z_min_lb. split.
-      lia. apply IHk with l. lia. lia.
+    elim: k c l.
+    - by move=>c l; rewrite leqn0 => /nilP ->; rewrite /M /= equivalent_m.
+    move=>n IH c; case=>/=; rewrite /M /= equivalent_m le_maxr.
+    - by move=>_ H; apply/orP; left; apply: (IH c [::]).
+    move=>h t H; rewrite le_minr; case/andP=>Hh Ht.
+    apply/orP; right; apply/max_of_nonempty_list.
+    - by rewrite /nilp size_map -cardE -lt0n cand_nonempty.
+    exists (Order.min (marg c h) (linear_search h d (MM n))).
+    - by apply/mapP; exists h=>//; rewrite mem_enum.
+    rewrite le_minr Hh /=.
+    by apply: (IH h t).
     Qed.
 
     (* characterisation of the iterated margin function in terms of paths *)
-    Lemma iterated_marg_char: forall k c d s,
-        M k c d >= s <-> exists (l : list cand), (length l <= k)%nat /\ str c l d >= s.
+    Lemma iterated_marg_char k c d s :
+      reflect (exists2 l : seq cand, (size l <= k)%N & s <= str c l d) (s <= M k c d).
     Proof.
-      split. generalize dependent s. generalize dependent d.
-      generalize dependent c. induction k. simpl. intros. exists []. simpl. intuition.
-      unfold M in *. simpl in H. rewrite equivalent_m in H. auto.
-
-      simpl. intros. unfold M in *. simpl in H.
-
-      rewrite equivalent_m in H.  pose proof (proj1 (z_max_lb (M k c d) _ s) H).
-      destruct H0.
-      specialize (IHk c d s H0). destruct IHk as [l [H1 H2]]. exists l. lia. clear H.
-      pose proof
-           (max_of_nonempty_list _ cand_all cand_not_nil dec_cand s
-                                 (fun x : cand => int.min (marg c x) (M k x d))).
-      destruct H. clear H1. specialize (H H0). destruct H as [e [H1 H2]].
-      pose proof (proj1 (z_min_lb _ _ s) H2). destruct H.
-      specialize (IHk e d s H3). destruct IHk as [l [H4 H5]].
-      exists (e :: l). simpl. split. lia.
-      apply z_min_lb. intuition.
-      (* otherway *)
-      intros. destruct H as [l [H1 H2]].
-      pose proof (path_len_iterated_marg k c d s l H1 H2). lia.
+    apply: (iffP idP).
+    - elim: k s d c.
+      - move=>s d c; rewrite /M /= equivalent_m => H.
+        by exists [::].
+      move=>n IH s d c; rewrite /M /= equivalent_m le_maxr; case/orP.
+      - rewrite -/(M n c d) =>/IH; case=>l H1 H2; exists l=>//.
+        by apply: ltnW.
+      have H': ~~ nilp [seq Order.min (marg c x) (linear_search x d (MM n)) | x <- enum cand].
+      - by rewrite /nilp size_map -cardE -lt0n cand_nonempty.
+      case/(max_of_nonempty_list _ _ H')=>i /mapP; case=>x _ {i}->.
+      rewrite le_minr; case/andP=>H1; rewrite -/(M n x d) => /IH.
+      by case=>xs Hx H2; exists (x::xs)=>//=; rewrite le_minr H1.
+    by case=>xs H1 H2; apply (path_len_iterated_marg _ _ _ _ xs).
     Qed.
 
     (* every path of strength >= s can be split into two paths of strength >= s *)

@@ -1,12 +1,10 @@
 From Coq Require Import ssreflect ssrbool ssrfun.
 From mathcomp Require Import ssrnat seq eqtype ssrint order bigop path.
 
-(*
 Notation "'existsT' x .. y , p" :=
   (sigT (fun x => .. (sigT (fun y => p)) ..))
     (at level 200, x binder, right associativity,
-     format "'[' 'existsT' '/ ' x .. y , '/ ' p ']'") : type_scope.
-*)
+     format "'[' 'existsT' '/ '  x .. y , '/ '  p ']'") : type_scope.
 
 Lemma inj_pairl {A B : Type} x : injective [eta (@pair A B)^~ x].
 Proof. by apply/(can_inj (g:=fst)). Qed.
@@ -139,6 +137,13 @@ by move=>t ts IH; rewrite big_cons le_maxr IH orbT.
 Qed.
 
 (*
+Lemma max_of_nonempty_list_type (l : seq int) (s : int) :
+  ~~ nilp l ->
+    s <= maxlist l -> existsT x, x \in l /\ s <= x.
+*)
+
+
+(*
 Lemma max_of_nonempty_list {A : eqType} (l : seq A) (s : int) (f : A -> int) :
     ~~ nilp l ->
     reflect (exists2 x, x \in l & s <= f x) (s <= maxlist (map f l)).
@@ -218,10 +223,12 @@ exists (nth x0 l j), (take i l), (take (j - i.+1) (drop i.+1 l)), (drop j.+1 l).
 by rewrite E.
 Qed.
 
+(*
 (* if maximum of two numbers m, n >= s then either m >= s or
    n >= s *)
 Lemma z_max_lb (m n s : int) : Order.max m n >= s <-> (m >= s) || (n >= s).
 Proof. by rewrite le_maxr. Qed.
+*)
 
 (* if size of seq l is > n then there is a natural number
    p such that p + n = size of seq l *)
